@@ -1,0 +1,4 @@
+fastapi
+uvicorn[standard]
+pipecat-ai[daily,deepgram,openai]
+sqlite-utils
