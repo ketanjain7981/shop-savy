@@ -1,9 +1,13 @@
 import os
 import sqlite3
+from dotenv import load_dotenv
 from fastapi import FastAPI
+
+# Load environment variables from .env file
+load_dotenv()
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
-from pipecat.transports.daily import DailyTransport, DailyParams
+from pipecat.transports.services.daily import DailyTransport, DailyParams
 from pipecat.services.deepgram import DeepgramSTTService, DeepgramTTSService
 from pipecat.services.openai import OpenAILLMService
 
@@ -44,9 +48,9 @@ async def startup_event():
     # Daily transport: joins the specified Daily room.
     daily_room = os.environ.get("DAILY_ROOM_URL")
     transport = DailyTransport(
-        daily_room,
+        room_url=daily_room,
         token=None,  # Use token here if your room is secured
-        name="AI Bot",
+        bot_name="AI Bot",
         params=DailyParams(audio_out_enabled=True)
     )
 
@@ -70,9 +74,9 @@ async def startup_event():
     )
 
     # Optional: Log messages to SQLite via a custom processor.
-    # (Assuming Pipecat provides TranscriptionFrame and LLMResponseFrame types.)
-    from pipecat.processors.base import FrameProcessor
-    from pipecat.frames import TranscriptionFrame, LLMResponseFrame
+    # Using Pipecat's TranscriptionFrame and LLMTextFrame types.
+    from pipecat.processors.frame_processor import FrameProcessor
+    from pipecat.frames.frames import TranscriptionFrame, LLMTextFrame
 
     class MessageLogger(FrameProcessor):
         def process(self, frame):
@@ -80,7 +84,7 @@ async def startup_event():
             if isinstance(frame, TranscriptionFrame) and frame.is_final:
                 save_to_db("user", frame.text)
             # Log LLM responses (assistant output)
-            if isinstance(frame, LLMResponseFrame):
+            if isinstance(frame, LLMTextFrame):
                 save_to_db("assistant", frame.text)
             return frame
 
@@ -97,7 +101,10 @@ async def startup_event():
         transport.output()   # Send audio back via Daily
     ])
 
-    runner.start_pipeline(pipeline)
+    # Create a pipeline task and run it
+    from pipecat.pipeline.task import PipelineTask
+    task = PipelineTask(pipeline)
+    await runner.run(task)
 
 @app.get("/health")
 def read_health():
