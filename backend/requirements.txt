@@ -1,4 +1,4 @@
 fastapi
 uvicorn[standard]
-pipecat-ai[daily,deepgram,openai]
+pipecat-ai[daily,deepgram,openai,silero]
 sqlite-utils
