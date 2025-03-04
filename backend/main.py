@@ -1,120 +1,153 @@
-import os
-import sqlite3
+import argparse
+import os, httpx
+import subprocess
+from contextlib import asynccontextmanager
+from typing import Any, Dict
+
+import aiohttp
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, RedirectResponse
+
 
 # Load environment variables from .env file
-load_dotenv()
-from pipecat.pipeline.pipeline import Pipeline
-from pipecat.pipeline.runner import PipelineRunner
-from pipecat.transports.services.daily import DailyTransport, DailyParams
-from pipecat.services.deepgram import DeepgramSTTService, DeepgramTTSService
-from pipecat.services.openai import OpenAILLMService
+load_dotenv(override=True)
+DAILY_API_KEY = os.environ.get("DAILY_API_KEY")
+DEEPGRAM_API_KEY = os.environ.get("DEEPGRAM_API_KEY")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
-app = FastAPI()
+# Maximum number of bot instances allowed per room
+MAX_BOTS_PER_ROOM = 1
 
-# Path for the SQLite database file
-DB_PATH = "data/chatbot.db"
+# Dictionary to track bot processes: {pid: (process, room_url)}
+bot_procs = {}
 
-def init_db():
-    os.makedirs("data", exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            role TEXT,
-            content TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+daily_client = httpx.AsyncClient(base_url="https://api.daily.co/v1", headers={"Authorization": f"Bearer {DAILY_API_KEY}"})
+
+def cleanup():
+    """Cleanup function to terminate all bot processes.
+
+    Called during server shutdown.
+    """
+    for entry in bot_procs.values():
+        proc = entry[0]
+        proc.terminate()
+        proc.wait()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """FastAPI lifespan manager that handles startup and shutdown tasks.
+
+    - Creates aiohttp session
+    - Initializes Daily API helper
+    - Cleans up resources on shutdown
+    """
+    aiohttp_session = aiohttp.ClientSession()
+    yield
+    await aiohttp_session.close()
+    cleanup()
+
+
+# Initialize FastAPI app with lifespan manager
+app = FastAPI(lifespan=lifespan)
+
+# Configure CORS to allow requests from any origin
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+async def create_room_and_token() -> tuple[str, str]:
+    room_name = "shop-savy"  # fixed room name
+
+    # 1. Attempt to get the existing room details
+    room_resp = await daily_client.get(f"/rooms/{room_name}")
+    if room_resp.status_code == 200:
+        room_data = room_resp.json()
+    else:
+        # If not found, create a new room with the fixed name
+        create_payload = {
+            "name": room_name,
+            "privacy": "private"
+        }
+        room_resp = await daily_client.post("/rooms", json=create_payload)
+        room_data = room_resp.json()
+
+    room_url = room_data["url"]
+
+    # 2. Generate a user token for this room
+    user_token_payload = {
+        "properties": {
+            "room_name": room_name,
+            "is_owner": False  # token for the user
+        }
+    }
+    user_token_resp = await daily_client.post("/meeting-tokens", json=user_token_payload)
+    user_token = user_token_resp.json()["token"]
+
+    return room_url, user_token
+
+
+@app.post("/connect")
+async def rtvi_connect(request: Request) -> Dict[Any, Any]:
+    print("Creating room for RTVI connection")
+    room_url, token = await create_room_and_token()
+    print(f"Room URL: {room_url}")
+
+    # Start the bot process
+    try:
+        proc = subprocess.Popen(
+            [f"python3 -m bot -u {room_url} -t {token}"],
+            shell=True,
+            bufsize=1,
+            cwd=os.path.dirname(os.path.abspath(__file__)),
         )
-    """)
-    conn.commit()
-    conn.close()
+        bot_procs[proc.pid] = (proc, room_url)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to start subprocess: {e}")
 
-def save_to_db(role, content):
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("INSERT INTO messages (role, content) VALUES (?, ?)", (role, content))
-    conn.commit()
-    conn.close()
+    # Return the authentication bundle in format expected by DailyTransport
+    return {"room_url": room_url, "token": token}
 
-# Global pipeline runner to manage our voice processing pipeline
-runner = PipelineRunner()
 
-@app.on_event("startup")
-async def startup_event():
-    init_db()
+@app.get("/status/{pid}")
+def get_status(pid: int):
+    # Look up the subprocess
+    proc = bot_procs.get(pid)
 
-    # Daily transport: joins the specified Daily room.
-    daily_room = os.environ.get("DAILY_ROOM_URL")
-    transport = DailyTransport(
-        room_url=daily_room,
-        token=None,  # Use token here if your room is secured
-        bot_name="AI Bot",
-        params=DailyParams(audio_out_enabled=True)
+    # If the subprocess doesn't exist, return an error
+    if not proc:
+        raise HTTPException(status_code=404, detail=f"Bot with process id: {pid} not found")
+
+    # Check the status of the subprocess
+    status = "running" if proc[0].poll() is None else "finished"
+    return JSONResponse({"bot_id": pid, "status": status})
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    # Parse command line arguments for server configuration
+    default_host = os.getenv("HOST", "0.0.0.0")
+    default_port = int(os.getenv("FAST_API_PORT", "7860"))
+
+    parser = argparse.ArgumentParser(description="Daily Storyteller FastAPI server")
+    parser.add_argument("--host", type=str, default=default_host, help="Host address")
+    parser.add_argument("--port", type=int, default=default_port, help="Port number")
+    parser.add_argument("--reload", action="store_true", help="Reload code on change")
+
+    config = parser.parse_args()
+
+    # Start the FastAPI server
+    uvicorn.run(
+        "server:app",
+        host=config.host,
+        port=config.port,
+        reload=config.reload,
     )
-
-    # Deepgram STT service to convert incoming audio to text.
-    stt = DeepgramSTTService(
-        api_key=os.environ.get("DEEPGRAM_API_KEY")
-        # Additional configuration (e.g., VAD) can be added here.
-    )
-
-    # OpenAI LLM service to generate responses.
-    llm = OpenAILLMService(
-        api_key=os.environ.get("OPENAI_API_KEY"),
-        model="gpt-3.5-turbo"
-    )
-
-    # Deepgram TTS service to synthesize text to speech.
-    tts = DeepgramTTSService(
-        api_key=os.environ.get("DEEPGRAM_API_KEY"),
-        voice="en-US-Standard-B",  # Choose a preferred voice
-        sample_rate=24000
-    )
-
-    # Optional: Log messages to SQLite via a custom processor.
-    # Using Pipecat's TranscriptionFrame and LLMTextFrame types.
-    from pipecat.processors.frame_processor import FrameProcessor
-    from pipecat.frames.frames import TranscriptionFrame, LLMTextFrame
-
-    class MessageLogger(FrameProcessor):
-        def process(self, frame):
-            # Log final transcriptions (user input)
-            if isinstance(frame, TranscriptionFrame) and frame.is_final:
-                save_to_db("user", frame.text)
-            # Log LLM responses (assistant output)
-            if isinstance(frame, LLMTextFrame):
-                save_to_db("assistant", frame.text)
-            return frame
-
-    logger_processor = MessageLogger()
-
-    # Assemble the Pipecat pipeline.
-    pipeline = Pipeline([
-        transport.input(),   # Audio coming in from Daily
-        stt,                 # Convert speech-to-text
-        logger_processor,    # Log user transcript
-        llm,                 # Generate AI response
-        logger_processor,    # Log assistant response
-        tts,                 # Convert text-to-speech
-        transport.output()   # Send audio back via Daily
-    ])
-
-    # Create a pipeline task and run it
-    from pipecat.pipeline.task import PipelineTask
-    task = PipelineTask(pipeline)
-    await runner.run(task)
-
-@app.get("/health")
-def read_health():
-    return {"status": "ok"}
-
-@app.get("/chatlogs")
-def get_chatlogs():
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("SELECT role, content, timestamp FROM messages ORDER BY id")
-    rows = cur.fetchall()
-    conn.close()
-    return [{"role": role, "content": content, "timestamp": timestamp} for (role, content, timestamp) in rows]
