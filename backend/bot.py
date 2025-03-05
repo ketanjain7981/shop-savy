@@ -2,11 +2,14 @@ import asyncio
 import os, httpx
 import sqlite3
 import sys
+import json
 
 import aiohttp
 from dotenv import load_dotenv
 from loguru import logger
 from PIL import Image
+from openai.types.chat import ChatCompletionToolParam
+
 
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.frames.frames import (
@@ -25,6 +28,8 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.processors.frameworks.rtvi import RTVIConfig, RTVIObserver, RTVIProcessor
 from pipecat.services.openai import OpenAILLMService
 from pipecat.transports.services.daily import DailyParams, DailyTransport
+from api import get_current_weather
+from tools import tools
 
 load_dotenv(override=True)
 logger.remove(0)
@@ -150,9 +155,32 @@ async def main():
         # Initialize LLM service
         llm_service = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"), model="gpt-4o")
 
+        # Optional start callback - called when function execution begins
+        async def start_fetch_weather(function_name, llm, context):
+            logger.debug(f"Starting weather fetch: {function_name}")
+
+        # Main function handler - called to execute the function
+        async def fetch_weather_from_api(function_name, tool_call_id, args, llm, context, result_callback):
+            # Fetch weather data using our API function
+            location = args.get("location", "San Francisco, CA")
+            format_unit = args.get("format", "celsius")
+            weather_data = get_current_weather(location, format_unit)
+            await result_callback(weather_data)
+
+        # Register the function
+        llm_service.register_function(
+            "get_current_weather",
+            fetch_weather_from_api,
+            start_callback=start_fetch_weather
+        )
+
         # Set up conversation context and management
         # The context_aggregator will automatically collect conversation context
-        context = OpenAILLMContext([{"role": "system", "content": "You are Chatbot, a friendly, helpful robot"}])
+        context = OpenAILLMContext(
+            messages=[{"role": "system", "content": "You are Chatbot, a friendly, helpful robot"}],
+            tools=tools,
+            tool_choice="auto"
+        )
         context_aggregator = llm_service.create_context_aggregator(context)
 
         logger_service = TranscriptionLogger()
@@ -196,7 +224,10 @@ async def main():
         async def on_participant_left(transport, participant, reason):
             print(f"Participant left: {participant}")
             await task.cancel()
+        
+        # No need for the event_handler, we're using register_function instead
 
+        
         runner = PipelineRunner()
 
         await runner.run(task)
