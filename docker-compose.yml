@@ -1,24 +1,17 @@
 version: "3.9"
 services:
   frontend:
-    build: ./frontend
+    build: ./frontend/Dockerfile
     ports:
-      - "3000:80"            # Access the React app at http://localhost:3000
-    environment:
-      - VITE_DAILY_ROOM_URL=${DAILY_ROOM_URL}
+      - "3000:3000"
     depends_on:
       - backend
 
   backend:
     build: ./backend
     ports:
-      - "8000:8000"          # FastAPI is available at http://localhost:8000
-    environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}
-      - DAILY_API_KEY=${DAILY_API_KEY}
-      - DAILY_ROOM_URL=${DAILY_ROOM_URL}
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
     volumes:
-      - db_data:/app/data     # Persist SQLite data
-volumes:
-  db_data:
+      - ./backend/chat_history.db:/app/chat_history.db
