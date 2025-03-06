@@ -61,20 +61,21 @@ def filter_products(**filters):
 
     def matches(product):
         return all([
-            filters.get("category") is None or product.get("category") == filters["category"],
-            filters.get("subcategory") is None or product.get("subcategory") == filters["subcategory"],
-            filters.get("brand") is None or product.get("brand") == filters["brand"],
+            filters.get("category") is None or product.get("category", "").lower() == filters["category"].lower(),
+            filters.get("subcategory") is None or product.get("subcategory", "").lower() == filters["subcategory"].lower(),
+            filters.get("brand") is None or product.get("brand", "").lower() == filters["brand"].lower(),
             filters.get("min_price") is None or product.get("price", 0) >= filters["min_price"],
             filters.get("max_price") is None or product.get("price", 0) <= filters["max_price"],
             filters.get("min_rating") is None or product.get("rating", 0) >= filters["min_rating"],
-            filters.get("colors") is None or any(color in product.get("colors", []) for color in filters["colors"]),
-            filters.get("tags") is None or any(tag in product.get("tags", []) for tag in filters["tags"]),
+            filters.get("colors") is None or any(color.lower() in map(str.lower, product.get("colors", [])) for color in filters["colors"]),
+            filters.get("tags") is None or any(tag.lower() in map(str.lower, product.get("tags", [])) for tag in filters["tags"]),
             filters.get("in_stock") is None or product.get("stock", 0) > 0
         ])
 
     filtered_products = [product["id"] for product in products if matches(product)]
     paginated_product_ids = filtered_products[
-                            filters.get("offset", 0):filters.get("offset", 0) + filters.get("limit", 20)]
+        filters.get("offset", 0):filters.get("offset", 0) + filters.get("limit", 20)
+    ]
 
     return {"product_ids": paginated_product_ids}
 

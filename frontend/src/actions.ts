@@ -1,5 +1,4 @@
 export const fetch_start_agent = async (
-  roomUrl: string | null,
   serverUrl: string
 ) => {
   // Ensure we don't have double slashes in the URL

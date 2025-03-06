@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useAppMessage } from '@daily-co/daily-react';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -25,7 +25,7 @@ interface Product {
   };
 }
 
-export default function ProductCards() {
+const ProductCards: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
 
   useAppMessage({
@@ -109,4 +109,6 @@ export default function ProductCards() {
       })}
     </div>
   );
-}
+};
+
+export default ProductCards;

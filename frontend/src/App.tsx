@@ -49,14 +49,14 @@ export default function App() {
   const daily = useDaily();
   
   // Fetch configuration from the backend
-  const { config, loading: configLoading } = useAppConfig(serverUrl);
+  const { config } = useAppConfig(serverUrl);
   
   // Show config options (from backend or fallback to env)
   const showConfigOptions = config.show_config;
-  
+
   // Mic mode (from backend or fallback to env)
   const isOpenMic = config.open_mic;
-  
+
   // Auto room creation based on config from backend
   const autoRoomCreation = !config.manual_room_entry;
 
@@ -114,7 +114,7 @@ export default function App() {
         try {
           console.log('Calling fetch_start_agent with:', { roomUrl, serverUrl });
           // We're not sending roomUrl anymore as the backend generates it
-          data = await fetch_start_agent(null, serverUrl);
+          data = await fetch_start_agent(serverUrl);
           console.log('Response from fetch_start_agent:', data);
 
           if (data.error) {

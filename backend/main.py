@@ -7,6 +7,7 @@ from typing import Any, Dict
 import aiohttp
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 
@@ -94,7 +95,7 @@ async def create_room_and_token() -> tuple[str, str]:
     return room_url, user_token
 
 
-@app.post("/connect")
+@app.post("/api/connect")
 async def rtvi_connect(request: Request) -> Dict[Any, Any]:
     print("Creating room for RTVI connection")
     room_url, token = await create_room_and_token()
@@ -116,7 +117,7 @@ async def rtvi_connect(request: Request) -> Dict[Any, Any]:
     return {"room_url": room_url, "token": token}
 
 
-@app.get("/status/{pid}")
+@app.get("/api/status/{pid}")
 def get_status(pid: int):
     # Look up the subprocess
     proc = bot_procs.get(pid)
@@ -129,6 +130,8 @@ def get_status(pid: int):
     status = "running" if proc[0].poll() is None else "finished"
     return JSONResponse({"bot_id": pid, "status": status})
 
+# Mount React's build output (the "dist" folder) at the root path.
+app.mount("/", StaticFiles(directory="frontend-dist", html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn

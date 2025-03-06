@@ -94,7 +94,7 @@ export const useAppConfig = (serverUrl: string | undefined) => {
 // Function to get environment variables with fallbacks
 export const getEnvConfig = () => {
   return {
-    serverUrl: import.meta.env.VITE_SERVER_URL || 'http://localhost:8000',
-    appTitle: import.meta.env.VITE_APP_TITLE || 'Voice Assistant',
+    serverUrl: '/api',
+    appTitle: 'ShopSavy AI Assistant',
   };
 };

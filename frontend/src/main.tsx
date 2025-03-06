@@ -43,6 +43,7 @@ export const Layout = () => {
     <DailyProvider
       dailyConfig={{
         // Ensure Daily is properly initialized
+        // @ts-ignore
         experimentalChromeVideoTrackOptimizations: true,
         // Ensure audio is properly handled
         useDevicePreferencesApi: true,
