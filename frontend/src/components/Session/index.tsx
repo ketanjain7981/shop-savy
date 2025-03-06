@@ -22,6 +22,7 @@ import {
 } from "../ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import UserMicBubble from "../UserMicBubble";
+import ProductCards from "../ProductCards";
 
 import Agent from "./Agent";
 
@@ -115,6 +116,9 @@ export const Session = React.memo(
 
     useAppMessage({
       onAppMessage: (e) => {
+        if(e.data?.type === "rtvi-product-message") {
+          console.log(e)
+        }
         // Aggregate metrics from pipecat
         if (e.data?.type === "pipecat-metrics") {
           e.data.metrics?.ttfb?.map(
@@ -177,21 +181,29 @@ export const Session = React.memo(
             document.getElementById("tray")!
           )}
 
-        <div className="flex-1 flex flex-col items-center justify-center w-full">
-          <Card
-            fullWidthMobile={false}
-            className="w-full max-w-[320px] sm:max-w-[420px] mt-auto shadow-long"
-          >
-            <Agent hasStarted={hasStarted} statsAggregator={stats_aggregator} />
-          </Card>
+        <div className="flex-1 flex flex-row items-center justify-between w-full gap-4 px-4">
+          {/* Product cards section */}
+          <div className="flex-1 h-full max-w-[50%]">
+            <ProductCards />
+          </div>
+          
+          {/* Chat section */}
+          <div className="flex flex-col items-center justify-center">
+            <Card
+              fullWidthMobile={false}
+              className="w-full max-w-[320px] sm:max-w-[420px] mt-auto shadow-long"
+            >
+              <Agent hasStarted={hasStarted} statsAggregator={stats_aggregator} />
+            </Card>
 
-          <UserMicBubble
-            openMic={openMic}
-            active={hasStarted} //Open mic: && talkState !== "assistant"}
-            muted={muted}
-            handleMute={() => toggleMute()}
-          />
-          <DailyAudio />
+            <UserMicBubble
+              openMic={openMic}
+              active={hasStarted} //Open mic: && talkState !== "assistant"}
+              muted={muted}
+              handleMute={() => toggleMute()}
+            />
+            <DailyAudio />
+          </div>
         </div>
 
         <footer className="w-full flex flex-row mt-auto self-end md:w-auto">
