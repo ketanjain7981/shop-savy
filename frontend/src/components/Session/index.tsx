@@ -115,6 +115,9 @@ export const Session = React.memo(
 
     useAppMessage({
       onAppMessage: (e) => {
+        if(e.data?.type === "rtvi-product-message") {
+          console.log(e)
+        }
         // Aggregate metrics from pipecat
         if (e.data?.type === "pipecat-metrics") {
           e.data.metrics?.ttfb?.map(

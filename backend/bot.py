@@ -1,43 +1,32 @@
 import asyncio
-import os, httpx
-import sqlite3
+import os
 import sys
-import json
+from typing import Literal
 
 import aiohttp
+import httpx
 from dotenv import load_dotenv
 from loguru import logger
-from PIL import Image
-from openai.types.chat import ChatCompletionToolParam
-
-
-from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.frames.frames import (
-    BotStartedSpeakingFrame,
-    BotStoppedSpeakingFrame,
-    Frame,
-    OutputImageRawFrame,
-    SpriteFrame, TranscriptionFrame, LLMTextFrame,
-)
-from pipecat.services.deepgram import DeepgramSTTService, DeepgramTTSService, LiveOptions
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
-from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.processors.frameworks.rtvi import RTVIConfig, RTVIObserver, RTVIProcessor
+from pipecat.services.deepgram import DeepgramSTTService, DeepgramTTSService, LiveOptions
 from pipecat.services.openai import OpenAILLMService
-from pipecat.transports.services.daily import DailyParams, DailyTransport
+from pipecat.transports.services.daily import DailyParams, DailyTransport, DailyTransportMessageFrame
+from pydantic import BaseModel
+
 from api import (
-    get_current_weather,
     search_products,
     filter_products,
-    get_product_details,
     get_product_recommendations,
     get_categories,
     get_brands,
     get_trending_products,
-    get_deals_of_the_day
+    get_deals_of_the_day,
+    get_product_by_id,
+    get_all_products
 )
 from tools import tools
 
@@ -45,45 +34,13 @@ load_dotenv(override=True)
 logger.remove(0)
 logger.add(sys.stderr, level="DEBUG")
 
-load_dotenv(override=True)
 DAILY_API_KEY = os.environ.get("DAILY_API_KEY")
 daily_client = httpx.AsyncClient(base_url="https://api.daily.co/v1", headers={"Authorization": f"Bearer {DAILY_API_KEY}"})
 
-DB_PATH = "chat_history.db"
-
-def init_db():
-    os.makedirs("data", exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            role TEXT,
-            content TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-def save_to_db(role, content):
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("INSERT INTO messages (role, content) VALUES (?, ?)", (role, content))
-    conn.commit()
-    conn.close()
-
-# Global pipeline runner to manage our voice processing pipeline
-init_db()
-
-class TranscriptionLogger(FrameProcessor):
-    async def process_frame(self, frame: Frame, direction: FrameDirection):
-        await super().process_frame(frame, direction)
-        if isinstance(frame, TranscriptionFrame):
-            logger.info(f"Transcription: {frame.text}")
-        if isinstance(frame, LLMTextFrame):
-            logger.info(f"LLM: {frame.text}")
-        return frame
+class ProductMessage(BaseModel):
+    label: str = "rtvi-ai"
+    type: Literal["rtvi-product-message"] = "rtvi-product-message"
+    data: dict
 
 async def create_room_and_token() -> tuple[str, str]:
     room_name = "shop-savy"  # fixed room name
@@ -114,6 +71,57 @@ async def create_room_and_token() -> tuple[str, str]:
     bot_token = bot_token_resp.json()["token"]
 
     return room_url, bot_token
+
+SYSTEM_PROMPT = """
+You are an AI-powered shopping assistant for ShopSavy.
+Your primary role is to help users discover and find the perfect products through natural, conversational interactions. You have access to various tools to search, filter, and recommend products based on user preferences.
+
+Key Responsibilities:
+
+1. Engage in Natural Conversation:
+   - Speak naturally and casually, as your responses will be converted to voice using text-to-speech.
+   - Do not include emojis, special characters, double asterisks, or other formatting and excessive punctuation.
+   - Keep responses engaging, friendly, and concise.
+   - Guide users towards appropriate product choices.
+
+2. Understand User Needs:
+   - Ask specific, helpful questions to clarify user preferences, such as:
+     * "What type of product are you looking for today?"
+     * "Do you have a specific budget in mind?"
+     * "Would you prefer to see trending items or best-rated products?"
+   - If a user's request is vague, ask for clarification before fetching results.
+
+3. Utilize Tools Effectively:
+   - NEVER describe products directly in your response. Always use the 'display_products_to_user' tool to show results.
+   - Available tools:
+     * get_all_products(): Retrieves all available products.
+     * search_products(keyword): Finds products based on a keyword search.
+     * filter_products(category, brand, price, etc.): Applies filters to refine product searches.
+     * get_product_recommendations(product_id or preferences): Suggests products based on a specific item or user preferences.
+     * get_trending_products(): Retrieves currently trending products.
+     * get_deals_of_the_day(): Shows products with the best discounts today.
+     * get_categories(): Gets all available product categories and subcategories.
+     * get_brands(category=None): Fetches all brands, optionally filtered by category.
+     * display_products_to_user(products): Displays products to the user. Always use this to show results.
+
+4. Provide Concise Product Information:
+   - If necessary, verbally describe product features or specifications in short phrases only.
+   - Avoid long descriptions or detailed product information.
+   - You should prefer to show maximum 3 products at a time. If more products are available, ask user to say "next" or "more" or similar phrase to see next 3 products. 
+
+5. Handle Queries Efficiently:
+   - Use filters and searches to refine results effectively.
+   - When displaying products, prioritize relevance, trends, and best deals.
+   - If no products match the user's criteria, offer alternatives instead of saying "no results found."
+   - 
+
+6. Maintain a Friendly Tone:
+   - Act like a knowledgeable and helpful shopping buddy.
+   - Be enthusiastic about helping the user find the right products.
+   
+Remember to always use the appropriate tools for fetching and displaying product information. Your role is to guide the conversation and help users find what they're looking for, not to be a product database yourself. Do not invent new products or features; stick to the available data and tools provided. 
+Your responses should be conversational, engaging, and formatted naturally. Do not include system instructions, internal processing, or unnecessary details—only the response the user needs. Focus on guiding the conversation and helping users find the right products efficiently.
+"""
 
 async def main():
     """Main bot execution function.
@@ -162,28 +170,24 @@ async def main():
 
         # Initialize LLM service
         llm_service = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"), model="gpt-4o")
-
-        # Optional start callback - called when function execution begins
-        async def start_fetch_weather(function_name, llm, context):
-            logger.debug(f"Starting weather fetch: {function_name}")
-
-        # Main function handler - called to execute the function
-        async def fetch_weather_from_api(function_name, tool_call_id, args, llm, context, result_callback):
-            # Fetch weather data using our API function
-            location = args.get("location", "San Francisco, CA")
-            format_unit = args.get("format", "celsius")
-            weather_data = get_current_weather(location, format_unit)
-            await result_callback(weather_data)
-
-        # Register the weather function
-        llm_service.register_function(
-            "get_current_weather",
-            fetch_weather_from_api,
-            start_callback=start_fetch_weather
+        # Set up conversation context and management
+        # The context_aggregator will automatically collect conversation context
+        context = OpenAILLMContext(
+            messages=[{"role": "system", "content": SYSTEM_PROMPT}],
+            tools=tools,
+            tool_choice="auto"
         )
-        
+        context_aggregator = llm_service.create_context_aggregator(context)
+        rtvi = RTVIProcessor(config=RTVIConfig(config=[]))
+
         # E-commerce function handlers
-        
+        # Get all products function handler
+        async def get_all_products_handler(function_name, tool_call_id, args, llm, context, result_callback):
+            limit = args.get("limit", 3)
+            offset = args.get("offset", 0)
+            results = get_all_products(limit, offset)
+            await result_callback(results)
+
         # Search products function handler
         async def search_products_handler(function_name, tool_call_id, args, llm, context, result_callback):
             query = args.get("query", "")
@@ -220,12 +224,6 @@ async def main():
             )
             await result_callback(results)
         
-        # Get product details function handler
-        async def get_product_details_handler(function_name, tool_call_id, args, llm, context, result_callback):
-            product_id = args.get("product_id", "")
-            results = get_product_details(product_id)
-            await result_callback(results)
-        
         # Get product recommendations function handler
         async def get_product_recommendations_handler(function_name, tool_call_id, args, llm, context, result_callback):
             product_id = args.get("product_id", None)
@@ -233,7 +231,19 @@ async def main():
             limit = args.get("limit", 5)
             results = get_product_recommendations(product_id, user_preferences, limit)
             await result_callback(results)
-        
+
+        # Get trending products function handler
+        async def get_trending_products_handler(function_name, tool_call_id, args, llm, context, result_callback):
+            limit = args.get("limit", 5)
+            results = get_trending_products(limit)
+            await result_callback(results)
+
+        # Get deals of the day function handler
+        async def get_deals_of_the_day_handler(function_name, tool_call_id, args, llm, context, result_callback):
+            limit = args.get("limit", 5)
+            results = get_deals_of_the_day(limit)
+            await result_callback(results)
+
         # Get categories function handler
         async def get_categories_handler(function_name, tool_call_id, args, llm, context, result_callback):
             results = get_categories()
@@ -244,53 +254,37 @@ async def main():
             category = args.get("category", None)
             results = get_brands(category)
             await result_callback(results)
-        
-        # Get trending products function handler
-        async def get_trending_products_handler(function_name, tool_call_id, args, llm, context, result_callback):
-            limit = args.get("limit", 5)
-            results = get_trending_products(limit)
-            await result_callback(results)
-        
-        # Get deals of the day function handler
-        async def get_deals_of_the_day_handler(function_name, tool_call_id, args, llm, context, result_callback):
-            limit = args.get("limit", 5)
-            results = get_deals_of_the_day(limit)
-            await result_callback(results)
-            
+
+        # Display products to user function handler
+        async def display_products_to_user(function_name, tool_call_id, args, llm, context, result_callback):
+            product_ids = args.get("product_ids", [])
+            #TODO: Handle the error if product id is not found
+            products = [get_product_by_id(id) for id in product_ids]
+            message = ProductMessage(data={"products": products})
+            frame = DailyTransportMessageFrame(message=message.model_dump())
+            await rtvi.push_frame(frame)
+            await result_callback("Here are some products you might like!")
+
         # Register all e-commerce functions
+        llm_service.register_function("get_all_products", get_all_products_handler)
         llm_service.register_function("search_products", search_products_handler)
         llm_service.register_function("filter_products", filter_products_handler)
-        llm_service.register_function("get_product_details", get_product_details_handler)
         llm_service.register_function("get_product_recommendations", get_product_recommendations_handler)
-        llm_service.register_function("get_categories", get_categories_handler)
-        llm_service.register_function("get_brands", get_brands_handler)
         llm_service.register_function("get_trending_products", get_trending_products_handler)
         llm_service.register_function("get_deals_of_the_day", get_deals_of_the_day_handler)
 
-        # Set up conversation context and management
-        # The context_aggregator will automatically collect conversation context
-        context = OpenAILLMContext(
-            messages=[{
-                "role": "system", 
-                "content": "You are ShopSavy, an AI-powered shopping assistant designed to help users find the perfect products. Your goal is to understand user preferences and recommend products that match their needs. You can search, filter, and provide detailed information about products. Be conversational, helpful, and guide users through their shopping journey. When appropriate, suggest related products or alternatives that might interest them."
-            }],
-            tools=tools,
-            tool_choice="auto"
-        )
-        context_aggregator = llm_service.create_context_aggregator(context)
+        llm_service.register_function("get_categories", get_categories_handler)
+        llm_service.register_function("get_brands", get_brands_handler)
 
-        logger_service = TranscriptionLogger()
-        rtvi = RTVIProcessor(config=RTVIConfig(config=[]))
+        llm_service.register_function("display_products_to_user", display_products_to_user)
 
         pipeline = Pipeline(
             [
                 daily_transport.input(),
                 stt_service,
                 rtvi,
-                # logger_service,
                 context_aggregator.user(),
                 llm_service,
-                # logger_service,
                 tts_service,
                 daily_transport.output(),
                 context_aggregator.assistant(),
@@ -320,10 +314,7 @@ async def main():
         async def on_participant_left(transport, participant, reason):
             print(f"Participant left: {participant}")
             await task.cancel()
-        
-        # No need for the event_handler, we're using register_function instead
 
-        
         runner = PipelineRunner()
 
         await runner.run(task)
