@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
 import { useAppMessage } from '@daily-co/daily-react';
+import { useState } from 'react';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { ShoppingCart, ShoppingBag } from 'lucide-react';

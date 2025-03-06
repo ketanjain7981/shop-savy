@@ -42,10 +42,8 @@ export const Layout = () => {
   return (
     <DailyProvider
       dailyConfig={{
-        // Ensure Daily is properly initialized
-        experimentalChromeVideoTrackOptimizations: true,
         // Ensure audio is properly handled
-        useDevicePreferencesApi: true,
+        useDevicePreferenceCookies: true
       }}
     >
       <TooltipProvider>
