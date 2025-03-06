@@ -60,17 +60,17 @@ def filter_products(**filters):
     products = data.get("products", [])
 
     def matches(product):
-        return all(
-            (filters.get("category") is None or product.get("category") == filters["category"]) and
-            (filters.get("subcategory") is None or product.get("subcategory") == filters["subcategory"]) and
-            (filters.get("brand") is None or product.get("brand") == filters["brand"]) and
-            (filters.get("min_price") is None or product.get("price", 0) >= filters["min_price"]) and
-            (filters.get("max_price") is None or product.get("price", 0) <= filters["max_price"]) and
-            (filters.get("min_rating") is None or product.get("rating", 0) >= filters["min_rating"]) and
-            (filters.get("colors") is None or any(color in product.get("colors", []) for color in filters["colors"])) and
-            (filters.get("tags") is None or any(tag in product.get("tags", []) for tag in filters["tags"])) and
-            (filters.get("in_stock") is None or product.get("stock", 0) > 0)
-        )
+        return all([
+            filters.get("category") is None or product.get("category") == filters["category"],
+            filters.get("subcategory") is None or product.get("subcategory") == filters["subcategory"],
+            filters.get("brand") is None or product.get("brand") == filters["brand"],
+            filters.get("min_price") is None or product.get("price", 0) >= filters["min_price"],
+            filters.get("max_price") is None or product.get("price", 0) <= filters["max_price"],
+            filters.get("min_rating") is None or product.get("rating", 0) >= filters["min_rating"],
+            filters.get("colors") is None or any(color in product.get("colors", []) for color in filters["colors"]),
+            filters.get("tags") is None or any(tag in product.get("tags", []) for tag in filters["tags"]),
+            filters.get("in_stock") is None or product.get("stock", 0) > 0
+        ])
 
     filtered_products = [product["id"] for product in products if matches(product)]
     paginated_product_ids = filtered_products[
