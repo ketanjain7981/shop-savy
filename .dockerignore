@@ -37,19 +37,12 @@ venv.bak/
 *.swo
 .DS_Store
 
-# Docker
-docker-compose.override.yml
-
 # Logs
 logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
-# Database
-*.sqlite3
-*.db
 
 # Frontend
 node_modules/
@@ -80,6 +73,10 @@ coverage/
 .secret
 *.pem
 
+# Git
+.git/
+.gitignore
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
@@ -95,3 +92,15 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
+
+# Docker
+docker-compose.override.yml
+
+# Documentation
+README.md
+docs/
+*.md
+
+# Temporary files
+tmp/
+temp/
