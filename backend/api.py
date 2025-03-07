@@ -118,11 +118,11 @@ def get_all_products(limit=20, page_info=None):
     if "Link" in response.headers:
         links = response.headers["Link"].split(", ")
         for link in links:
-            if 'rel="next"' in link:
-                next_page_info = link.split("&page_info=")[1].split(">")[0]
-            elif 'rel="previous"' in link:
-                prev_page_info = link.split("&page_info=")[1].split(">")[0]
-
+            if 'rel="next"' in link and "page_info=" in link:
+                next_page_info = link.split("page_info=")[1].split(">")[0]
+            elif 'rel="previous"' in link and "page_info=" in link:
+                prev_page_info = link.split("page_info=")[1].split(">")[0]
+    
     return {
         "product_ids": product_ids,
         "next_page_info": next_page_info,
