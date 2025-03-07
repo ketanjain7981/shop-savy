@@ -6,20 +6,20 @@ tools = [
         type="function",
         function={
             "name": "get_all_products",
-            "description": "Get all product IDs with pagination",
+            "description": "Get all product IDs with pagination from Shopify API.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "limit": {
                         "type": "integer",
-                        "description": "Maximum number of products to return",
+                        "description": "Maximum number of products to return (default: 20, max: 250).",
                     },
-                    "offset": {
-                        "type": "integer",
-                        "description": "Number of products to skip before returning results",
+                    "page_info": {
+                        "type": "string",
+                        "description": "Cursor for pagination (use next_page_info from the previous response). Leave empty for the first request.",
                     },
                 },
-                "required": [],
+                "required": ["limit"],
             },
         },
     ),
@@ -28,114 +28,85 @@ tools = [
         type="function",
         function={
             "name": "get_product_by_id",
-            "description": "Get a specific product by ID",
+            "description": "Fetch a specific product by ID from Shopify API.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "product_id": {
-                        "type": "string",
-                        "description": "Unique identifier of the product",
+                        "type": "integer",
+                        "description": "Unique identifier of the product.",
                     },
                 },
                 "required": ["product_id"],
             },
         },
     ),
-    # Search products by name, description, or tags
+    # Search products by title
     ChatCompletionToolParam(
         type="function",
         function={
             "name": "search_products",
-            "description": "Search for products by name, description, or tags",
+            "description": "Search for products by title using Shopify API.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Search keyword to match product names, descriptions, or tags",
+                        "description": "Search keyword to match product titles.",
                     },
                     "limit": {
                         "type": "integer",
-                        "description": "Maximum number of products to return",
+                        "description": "Maximum number of products to return (default: 10).",
                     },
                 },
                 "required": ["query"],
             },
         },
     ),
-    # Filter products based on various criteria
+    # Filter products
     ChatCompletionToolParam(
         type="function",
         function={
             "name": "filter_products",
-            "description": "Filter products based on various criteria",
+            "description": "Filter products from Shopify API by various criteria.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "category": {"type": "string", "description": "Product category"},
-                    "subcategory": {"type": "string", "description": "Product subcategory"},
-                    "brand": {"type": "string", "description": "Product brand"},
-                    "min_price": {"type": "number", "description": "Minimum product price"},
-                    "max_price": {"type": "number", "description": "Maximum product price"},
-                    "min_rating": {"type": "number", "description": "Minimum product rating"},
-                    "colors": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "List of preferred colors",
-                    },
+                    "category": {"type": "string", "description": "Product category."},
+                    "vendor": {"type": "string", "description": "Product vendor/brand."},
+                    "min_price": {"type": "number", "description": "Minimum product price."},
+                    "max_price": {"type": "number", "description": "Maximum product price."},
                     "tags": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "List of product tags",
+                        "description": "List of product tags.",
                     },
-                    "in_stock": {"type": "boolean", "description": "Whether product is in stock"},
-                    "limit": {"type": "integer", "description": "Maximum number of products to return"},
-                    "offset": {"type": "integer", "description": "Number of products to skip"},
+                    "in_stock": {"type": "boolean", "description": "Filter by stock availability."},
+                    "limit": {"type": "integer", "description": "Maximum number of products to return."},
                 },
                 "required": [],
             },
         },
     ),
-    # Get recommended products based on product ID or user preferences
+    # Get product recommendations
     ChatCompletionToolParam(
         type="function",
         function={
             "name": "get_product_recommendations",
-            "description": "Get recommended products based on product ID or user preferences",
+            "description": "Fetch recommended product IDs from Shopify's recommendations API.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "product_id": {
-                        "type": "string",
-                        "description": "ID of the product to base recommendations on",
-                    },
-                    "user_preferences": {
-                        "type": "object",
-                        "properties": {
-                            "categories": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "Preferred product categories",
-                            },
-                            "brands": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "Preferred brands",
-                            },
-                            "tags": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "Preferred product tags",
-                            },
-                        },
-                        "description": "User preference-based recommendations",
+                        "type": "integer",
+                        "description": "ID of the product to base recommendations on.",
                     },
                     "limit": {
                         "type": "integer",
-                        "description": "Maximum number of recommendations to return",
+                        "description": "Maximum number of recommendations to return (default: 5).",
                     },
                 },
-                "required": [],
+                "required": ["product_id"],
             },
         },
     ),
@@ -144,13 +115,13 @@ tools = [
         type="function",
         function={
             "name": "get_trending_products",
-            "description": "Get trending products",
+            "description": "Fetch trending products from Shopify API based on sales data.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "limit": {
                         "type": "integer",
-                        "description": "Maximum number of trending products to return",
+                        "description": "Maximum number of trending products to return (default: 5).",
                     },
                 },
                 "required": [],
@@ -162,13 +133,13 @@ tools = [
         type="function",
         function={
             "name": "get_deals_of_the_day",
-            "description": "Get deals of the day based on highest discounts",
+            "description": "Fetch products with the highest discounts from Shopify API.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "limit": {
                         "type": "integer",
-                        "description": "Maximum number of deals to return",
+                        "description": "Maximum number of deals to return (default: 5).",
                     },
                 },
                 "required": [],
@@ -180,7 +151,7 @@ tools = [
         type="function",
         function={
             "name": "get_categories",
-            "description": "Get all product categories and subcategories",
+            "description": "Fetch all product categories from Shopify API.",
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -193,37 +164,16 @@ tools = [
         type="function",
         function={
             "name": "get_brands",
-            "description": "Get all brands, optionally filtered by category",
+            "description": "Fetch all brands from Shopify API, optionally filtered by category.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "category": {
                         "type": "string",
-                        "description": "Category to filter brands (optional)",
+                        "description": "Category to filter brands (optional).",
                     },
                 },
                 "required": [],
-            },
-        },
-    ),
-    # Display products to the user in the UI
-    ChatCompletionToolParam(
-        type="function",
-        function={
-            "name": "display_products_to_user",
-            "description": "Display products to the user in the UI",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "product_ids": {
-                        "type": "array",
-                        "items": {
-                            "type": "integer",
-                        },
-                        "description": "List of product IDs to display to the user",
-                    },
-                },
-                "required": ["product_ids"],
             },
         },
     )
