@@ -176,5 +176,26 @@ tools = [
                 "required": [],
             },
         },
+    ),
+    # Display products to the user in the UI
+    ChatCompletionToolParam(
+        type="function",
+        function={
+            "name": "display_products_to_user",
+            "description": "Display products to the user in the UI",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "product_ids": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer",
+                        },
+                        "description": "List of product IDs to display to the user",
+                    },
+                },
+                "required": ["product_ids"],
+            },
+        },
     )
 ]

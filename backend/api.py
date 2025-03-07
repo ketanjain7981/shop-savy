@@ -11,8 +11,6 @@ PRODUCTS_FILE = DATA_DIR / "products.json"
 SHOPIFY_ACCESS_KEY = os.environ.get("SHOPIFY_ACCESS_KEY")
 SHOPIFY_STORE_NAME = os.environ.get("SHOPIFY_STORE_NAME")
 
-import requests
-
 def transform_product_response(product):
     
     transformed_product = {

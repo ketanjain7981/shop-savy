@@ -188,21 +188,6 @@ async def main():
             page_info = args.get("page_info", None)
             results = get_all_products(limit=limit, page_info=page_info)
             await result_callback(results)
-        
-
-        # Get product by ID function handler
-        async def get_product_by_id_handler(function_name, tool_call_id, args, llm, context, result_callback):
-            product_id = args.get("product_id", None)
-            if not product_id:
-                await result_callback({"error": "Product ID is required."})
-                return
-
-            result = get_product_by_id(product_id)
-            if "error" in result:
-                await result_callback({"error": result["error"]})
-            else:
-                await result_callback(result)
-
 
         # Search products function handler
         async def search_products_handler(function_name, tool_call_id, args, llm, context, result_callback):
@@ -288,7 +273,6 @@ async def main():
         llm_service.register_function("get_product_recommendations", get_product_recommendations_handler)
         llm_service.register_function("get_trending_products", get_trending_products_handler)
         llm_service.register_function("get_deals_of_the_day", get_deals_of_the_day_handler)
-        llm_service.register_function("get_product_by_id", get_product_by_id_handler)
         llm_service.register_function("get_categories", get_categories_handler)
         llm_service.register_function("get_brands", get_brands_handler)
 
